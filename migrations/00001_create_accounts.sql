@@ -17,5 +17,4 @@ CREATE TABLE transactions(
 CREATE INDEX transactions_account_created_idx ON transactions (account_id, created_at DESC);
 -- +goose Down
 DROP TABLE IF EXISTS transactions;
-DROP INDEX IF EXISTS transactions_account_created_idx;
 DROP TABLE IF EXISTS accounts;

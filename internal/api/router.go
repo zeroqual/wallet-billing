@@ -12,5 +12,8 @@ func NewRouter(h *Handler) *gin.Engine {
 
 	r.GET("/healthz", h.Healthz)
 	r.GET("/readyz", h.Readyz)
+	v1 := r.Group("/v1/accounts")
+	v1.POST("", h.Create)
+	v1.GET("/:id", h.Get)
 	return r
 }

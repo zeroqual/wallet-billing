@@ -14,7 +14,8 @@ import (
 	"github.com/zeroqual/wallet-billing/internal/api"
 	"github.com/zeroqual/wallet-billing/internal/config"
 	"github.com/zeroqual/wallet-billing/internal/logger"
-	"github.com/zeroqual/wallet-billing/internal/storage"
+	"github.com/zeroqual/wallet-billing/internal/service"
+	"github.com/zeroqual/wallet-billing/internal/storage/postgres"
 )
 
 const (
@@ -44,16 +45,16 @@ func run() error {
 	defer cancel()
 	dsn := cfg.Postgres.DSN()
 
-	pool, err := storage.InitPostgres(ctx, dsn)
+	pool, err := postgres.NewPool(ctx, dsn)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
 
-	repo := api.NewPostgresRepository(pool)
-	service := api.NewService(repo)
+	repository := postgres.NewAccountRepo(pool)
+	accService := service.NewAccountService(repository)
 
-	handler := api.NewHandler(service)
+	handler := api.NewHandler(accService, pool)
 	router := api.NewRouter(handler)
 
 	if err := api.Serve(ctx, router, cfg.Addr); err != nil {
