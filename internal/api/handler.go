@@ -17,6 +17,11 @@ type createAccountDTO struct {
 	OwnerID string `json:"owner_id" binding:"required"`
 }
 
+type depwithDTO struct {
+	ID     uuid.UUID `json:"id" binding:"required"`
+	Amount int64     `json:"amount"`
+}
+
 type accountResponse struct {
 	ID        uuid.UUID `json:"id"`
 	OwnerID   string    `json:"owner_id"`
@@ -108,5 +113,64 @@ func (h *Handler) Get(c *gin.Context) {
 			return
 		}
 	}
+	c.JSON(http.StatusOK, gin.H{"account": toResponse(acc)})
+}
+
+func (h *Handler) Deposit(c *gin.Context) {
+	var dto depwithDTO
+
+	if err := c.ShouldBindJSON(&dto); err != nil {
+		slog.Error("failed to bind json", slog.Any("err", err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bad request"})
+		return
+	}
+
+	acc, err := h.accounts.Deposit(c.Request.Context(), dto.ID, dto.Amount)
+	if err != nil {
+		slog.Error("got error deposit handler", slog.Any("err", err))
+		switch {
+		case errors.Is(err, domain.ErrInvalidAmount):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be > 0"})
+			return
+		case errors.Is(err, domain.ErrNotFound):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "account not found"})
+			return
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"account": toResponse(acc)})
+}
+
+func (h *Handler) Withdraw(c *gin.Context) {
+	var dto depwithDTO
+
+	if err := c.ShouldBindJSON(&dto); err != nil {
+		slog.Error("failed to bind json", slog.Any("err", err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bad request"})
+		return
+	}
+
+	acc, err := h.accounts.Withdraw(c.Request.Context(), dto.ID, dto.Amount)
+	if err != nil {
+		slog.Error("got error withdraw handler", slog.Any("err", err))
+		switch {
+		case errors.Is(err, domain.ErrInvalidAmount):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be > 0"})
+			return
+		case errors.Is(err, domain.ErrNotFound):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "account not found"})
+			return
+		case errors.Is(err, domain.ErrInsufficientFunds):
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "insufficient funds"})
+			return
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"account": toResponse(acc)})
 }

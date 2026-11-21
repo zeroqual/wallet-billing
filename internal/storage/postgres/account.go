@@ -56,8 +56,79 @@ func (r *AccountRepo) Get(ctx context.Context, id uuid.UUID) (domain.Account, er
 	return account, nil
 }
 func (r *AccountRepo) Deposit(ctx context.Context, id uuid.UUID, amount int64) (domain.Account, error) {
-	return domain.Account{}, nil
+	var account domain.Account
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Account{}, fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	err = tx.QueryRow(ctx,
+		`
+			UPDATE accounts
+			SET balance = balance+$1, updated_at = now()
+			WHERE id = $2
+			RETURNING id, owner_id, balance, created_at, updated_at
+		`, amount, id,
+	).Scan(&account.ID, &account.OwnerID, &account.Balance, &account.CreatedAt, &account.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Account{}, fmt.Errorf("%w : %v", domain.ErrNotFound, err)
+		}
+		return domain.Account{}, fmt.Errorf("failed to update account balance: %w", err)
+	}
+	_, err = tx.Exec(ctx,
+		`
+			INSERT INTO transactions(account_id, type, amount, balance_after)
+			VALUES($1, $2, $3, $4)
+		`, account.ID, domain.TxDeposit, amount, account.Balance,
+	)
+	if err != nil {
+		return domain.Account{}, fmt.Errorf("failed to insert into transactions: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Account{}, fmt.Errorf("failed to commit tx: %w", err)
+	}
+	return account, nil
 }
 func (r *AccountRepo) Withdraw(ctx context.Context, id uuid.UUID, amount int64) (domain.Account, error) {
-	return domain.Account{}, nil
+	var account domain.Account
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Account{}, fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	err = tx.QueryRow(ctx,
+		`
+			UPDATE accounts
+			SET balance = balance-$1, updated_at = now()
+			WHERE id = $2 AND balance-$1 >= 0
+			RETURNING id, owner_id, balance, created_at, updated_at
+		`, amount, id,
+	).Scan(&account.ID, &account.OwnerID, &account.Balance, &account.CreatedAt, &account.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE id = $1)`, id).Scan(&exists); err != nil {
+				return domain.Account{}, fmt.Errorf("failed to get account: %w", err)
+			}
+			if !exists {
+				return domain.Account{}, domain.ErrNotFound
+			}
+			return domain.Account{}, domain.ErrInsufficientFunds
+		}
+		return domain.Account{}, fmt.Errorf("failed to update account balance: %w", err)
+	}
+	_, err = tx.Exec(ctx,
+		`
+			INSERT INTO transactions(account_id, type, amount, balance_after)
+			VALUES($1, $2, $3, $4)
+		`, account.ID, domain.TxWithdraw, amount, account.Balance,
+	)
+	if err != nil {
+		return domain.Account{}, fmt.Errorf("failed to insert into transactions: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Account{}, fmt.Errorf("failed to commit tx: %w", err)
+	}
+	return account, nil
 }

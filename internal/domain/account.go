@@ -7,6 +7,13 @@ import (
 	"github.com/google/uuid"
 )
 
+type TxType string
+
+const (
+	TxDeposit  TxType = "deposit"
+	TxWithdraw TxType = "withdraw"
+)
+
 var (
 	ErrNotFound          = errors.New("account not found")
 	ErrInsufficientFunds = errors.New("insufficient funds")

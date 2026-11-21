@@ -15,5 +15,7 @@ func NewRouter(h *Handler) *gin.Engine {
 	v1 := r.Group("/v1/accounts")
 	v1.POST("", h.Create)
 	v1.GET("/:id", h.Get)
+	v1.POST("/deposit", h.Deposit)
+	v1.POST("/withdraw", h.Withdraw)
 	return r
 }
